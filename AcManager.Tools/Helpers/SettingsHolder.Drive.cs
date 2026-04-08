@@ -1159,7 +1159,7 @@ namespace AcManager.Tools.Helpers {
 
             public bool CheckAndFixControlsOrder {
                 get => _checkAndFixControlsOrder
-                        ?? (_checkAndFixControlsOrder = ValuesStorage.Get("Settings.DriveSettings.CheckAndFixControlsOrder", false)).Value;
+                        ?? (_checkAndFixControlsOrder = ValuesStorage.Get("Settings.DriveSettings.CheckAndFixControlsOrder", true)).Value;
                 set {
                     if (Equals(value, _checkAndFixControlsOrder)) return;
                     _checkAndFixControlsOrder = value;

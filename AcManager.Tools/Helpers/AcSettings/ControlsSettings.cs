@@ -1760,25 +1760,55 @@ namespace AcManager.Tools.Helpers.AcSettings {
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void FixControllersOrder() {
-            if (Devices.Count == 0) {
-                Logging.Warning("Devices are not yet scanned, scanning…");
-                var fixTimeout = TimeSpan.FromSeconds(2);
-                try {
-                    using (var timeout = new CancellationTokenSource(fixTimeout)) {
-                        var list = DirectInputScanner.GetAsync(timeout.Token).Result;
-                        Logging.Write("Scanned result: " + (list == null ? @"failed to scan" : $@"{list.Count} device(s)"));
-                        if (list == null) return;
-
-                        RescanDevices(list);
-                    }
-                } catch (Exception e) when (e.IsCancelled()) {
-                    Logging.Warning("Failed to scan the devices in given time");
+            // Always do a fresh scan so we catch order changes that happened after CM loaded devices.
+            Logging.Write("Checking controllers order for pre-launch fix…");
+            IList<Joystick> list;
+            try {
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2))) {
+                    list = DirectInputScanner.GetAsync(timeout.Token).Result;
+                    Logging.Write("Scanned result: " + (list == null ? @"failed to scan" : $@"{list.Count} device(s)"));
+                    if (list == null) return;
                 }
+            } catch (Exception e) when (e.IsCancelled()) {
+                Logging.Warning("Failed to scan the devices in given time");
+                return;
             }
 
-            if (_fixingMessedUpOrder) {
-                Logging.Write("Controllers order is fixed");
+            // For each device stored in the config, find it in the current scan by instance GUID
+            // and check whether its position has changed. This is independent of the async
+            // _fixingMessedUpOrder flag so it works even when devices were already loaded.
+            var orderChanged = false;
+            foreach (var key in Ini["CONTROLLERS"].Keys.Where(x => x.StartsWith(@"CON"))) {
+                var suffix = key.Substring(3);
+                var iniId = FlexibleParser.TryParseInt(suffix);
+                if (!iniId.HasValue) continue;
+
+                var storedGuid = Ini["CONTROLLERS"].GetNonEmpty($"__IGUID{suffix}");
+                if (storedGuid == null) continue;
+
+                for (var i = 0; i < list.Count; i++) {
+                    var joystick = list[i];
+                    if (joystick == null) continue;
+                    if (string.Equals(joystick.Information.InstanceGuid.ToString(), storedGuid,
+                            StringComparison.OrdinalIgnoreCase)) {
+                        if (i != iniId.Value) {
+                            Logging.Warning(
+                                    $"Device '{joystick.Information.InstanceName}': saved at index {iniId.Value}, now at index {i}");
+                            orderChanged = true;
+                        }
+                        break;
+                    }
+                }
+
+                if (orderChanged) break;
+            }
+
+            if (orderChanged) {
+                RescanDevices(list);
+                Logging.Write("Controllers order fixed, saving updated config");
                 SaveImmediately();
+                Toast.Show("Controls config fixed",
+                        "Controllers have changed in order, so Content Manager re-saved your configuration correctly");
             }
         }
     }
