@@ -1,3 +1,26 @@
+# chrisraff/actools — Fork of AcTools / Content Manager
+
+This is a personal fork of [gro-ove/actools](https://github.com/gro-ove/actools) (Content Manager for Assetto Corsa) with the following fixes applied on top of the upstream codebase:
+
+## Fork changes
+
+### Fix: device order remapping in controls.ini before race launch ([215bbfb](https://github.com/chrisraff/actools/commit/215bbfb3))
+
+When input devices (wheels, pedals, button boxes, etc.) are reconnected in a different order than when controls were originally configured, Assetto Corsa reads the wrong buttons and axes because it relies on positional device indices rather than GUIDs.
+
+`FixControllersOrder()` now always performs a fresh DirectInput scan at launch time regardless of whether devices were already loaded. It compares each stored device's instance GUID against its current scan position and re-saves `controls.ini` with corrected indices whenever the order has changed. Previously the fix was broken because it only ran when the device list was empty and the save was gated behind an async flag that required `CheckAndFixControlsOrder` to be explicitly enabled. The default for `CheckAndFixControlsOrder` has also been changed to `true` so the fix runs automatically.
+
+### Fix: action binding device lookup using GUID instead of enumeration index ([75a8bfb](https://github.com/chrisraff/actools/commit/75a8bfb4))
+
+Non-gameplay action bindings (pause, start race, reset VR, etc.) handled by `MemoryListener` were silently mapping to the wrong joystick on repeated launches. `MemoryListener.Start()` was looking up joysticks by raw positional index into a fresh DirectInput scan, but the scan order can differ from the order at the time `controls.ini` was saved.
+
+The fix reads `__IGUID{slot}` entries from `controls.ini`'s `[CONTROLLERS]` section at construction time and resolves each JOY slot to a joystick by matching instance GUID rather than position—consistent with how AC itself identifies devices. Falls back to positional lookup for older configs that lack `__IGUID` entries.
+
+## These fixes are not merged into Master
+Currently, the fixes are on their own branches while I validate them. If the fixes work, I will submit PRs for them to the original repo. If you wish to use the fixes yourself, you can merge these two branches together and build ACtools for yourself
+
+---
+
 # AcTools (and Content Manager)
 
 [![Build status](https://img.shields.io/appveyor/ci/gro-ove/actools.svg?label=Build&maxAge=60)](https://ci.appveyor.com/project/gro-ove/actools)
