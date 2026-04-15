@@ -81,7 +81,7 @@ namespace AcManager.Controls {
 
         private static readonly Dictionary<string, Tuple<FormattedText, bool>> SessionsCache = new Dictionary<string, Tuple<FormattedText, bool>>(8);
         private static readonly Dictionary<string, ObjToRender> CarsCache = new Dictionary<string, ObjToRender>(100);
-        private static readonly Dictionary<string, BitmapSource> TrackIconsCache = new Dictionary<string, BitmapSource>(100);
+        private static readonly LruCache<string, BitmapSource> TrackIconsCache = new LruCache<string, BitmapSource>(200);
 
         public static void SetScrolling(bool value) {
             if (value == _scrolling) return;
@@ -690,17 +690,14 @@ namespace AcManager.Controls {
         }
 
         private static BitmapSource GetTrackIcon(TrackObjectBase track) {
-            return TrackIconsCache.GetValueOrSet(track.IdWithLayout, () => {
-                var src = BetterImage.LoadBitmapSource(track.OutlineImage, 32, 32).ImageSource;
-                if (src == null) return null;
-                return ToBitmap(new BetterImage {
-                    Source = src,
-                    CropTransparentAreas = true
-                });
-            });
+            if (TrackIconsCache.TryGetValue(track.IdWithLayout, out var cached)) return cached;
+            var src = BetterImage.LoadBitmapSource(track.OutlineImage, 32, 32).ImageSource;
+            var result = src == null ? null : ToBitmap(new BetterImage { Source = src, CropTransparentAreas = true });
+            TrackIconsCache.Add(track.IdWithLayout, result);
+            return result;
         }
 
-        private static readonly Dictionary<string, BitmapSource> TrackIconsReadyCache = new Dictionary<string, BitmapSource>(100);
+        private static readonly LruCache<string, BitmapSource> TrackIconsReadyCache = new LruCache<string, BitmapSource>(200);
         private static readonly Dictionary<string, List<OnlineItem>> TrackIconsLoading = new Dictionary<string, List<OnlineItem>>(20);
 
         private static void GetTrackIconDelayed(TrackObjectBase track, OnlineItem item) {
@@ -708,13 +705,13 @@ namespace AcManager.Controls {
                 try {
                     var src = (await BetterImage.LoadBitmapSourceAsync(track.OutlineImage, 32, 32)).ImageSource;
                     if (src == null) {
-                        TrackIconsReadyCache[track.IdWithLayout] = null;
+                        TrackIconsReadyCache.Add(track.IdWithLayout, null);
                         return;
                     }
 
                     var crop = await Task.Run(() => BetterImage.FindTransparentCropMask((BitmapSource)src));
                     var bitmap = ToBitmap(new BetterImage { Source = src, Crop = crop, CropUnits = ImageCropMode.Absolute });
-                    TrackIconsReadyCache[track.IdWithLayout] = bitmap;
+                    TrackIconsReadyCache.Add(track.IdWithLayout, bitmap);
 
                     ObjToRender obj = null;
                     for (var i = info.Count - 1; i >= 0; i--) {
@@ -727,7 +724,7 @@ namespace AcManager.Controls {
                     }
                 } catch (Exception e) {
                     Logging.Warning(e);
-                    TrackIconsReadyCache[track.IdWithLayout] = null;
+                    TrackIconsReadyCache.Add(track.IdWithLayout, null);
                 }
                 TrackIconsLoading.Remove(track.IdWithLayout);
             }
