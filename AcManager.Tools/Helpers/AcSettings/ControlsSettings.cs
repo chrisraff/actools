@@ -1804,7 +1804,28 @@ namespace AcManager.Tools.Helpers.AcSettings {
             }
 
             if (orderChanged) {
-                RescanDevices(list);
+                // Only call RescanDevices if the in-memory device objects are also stale.
+                // The background scanner may have already updated Devices to reflect the
+                // current order; calling RescanDevices again would add duplicate
+                // PropertyChanged subscriptions on every axis/button/POV of reused devices.
+                var devicesNeedUpdate = Devices.Count == 0;
+                if (!devicesNeedUpdate) {
+                    for (var i = 0; i < list.Count; i++) {
+                        var joystick = list[i];
+                        if (joystick == null) continue;
+                        var d = Devices.FirstOrDefault(x => x.InstanceId.Equals(
+                                joystick.Information.InstanceGuid.ToString(), StringComparison.OrdinalIgnoreCase));
+                        if (d != null && d.Index != i) {
+                            devicesNeedUpdate = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (devicesNeedUpdate) {
+                    RescanDevices(list);
+                }
+
                 Logging.Write("Controllers order fixed, saving updated config");
                 SaveImmediately();
                 Toast.Show("Controls config fixed",
