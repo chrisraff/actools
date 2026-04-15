@@ -49,15 +49,36 @@ namespace AcTools.Utils.Helpers {
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetValue(TKey key, out TValue value) {
+            if (_cacheMap.TryGetValue(key, out var node)) {
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
+                value = node.Value.Value;
+                return true;
+            }
+            value = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Add(TKey key, TValue val) {
-            if (_cacheMap.Count >= _capacity) {
+            if (_cacheMap.TryGetValue(key, out var existingNode)) {
+                _lruList.Remove(existingNode);
+                _cacheMap.Remove(key);
+            } else if (_cacheMap.Count >= _capacity) {
                 RemoveFirst();
             }
 
             var cacheItem = new LruCacheItem(key, val);
             var node = new LinkedListNode<LruCacheItem>(cacheItem);
             _lruList.AddLast(node);
-            _cacheMap.Add(key, node);
+            _cacheMap[key] = node;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void Clear() {
+            _lruList.Clear();
+            _cacheMap.Clear();
         }
 
         private void RemoveFirst() {

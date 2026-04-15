@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using AcManager.Tools.Helpers;
@@ -41,7 +40,7 @@ namespace AcManager.Controls {
             }
         }
 
-        private static readonly Dictionary<string, Image> Cache = new Dictionary<string, Image>();
+        private static readonly LruCache<string, Image> Cache = new LruCache<string, Image>(300);
 
         private static readonly TaskCache TaskCache = new TaskCache();
 
@@ -59,21 +58,9 @@ namespace AcManager.Controls {
 
         public static async Task<Image> LoadEntryAsync([CanBeNull] string countryId, int decodeWidth) {
             var key = $@"{countryId?.ToLowerInvariant()}:{decodeWidth}";
-
-            bool got;
-            Image entry;
-
-            lock (Cache) {
-                got = Cache.TryGetValue(key, out entry);
-            }
-
-            if (!got) {
-                entry = await LoadEntryAsyncInner(countryId, decodeWidth).ConfigureAwait(false);
-                lock (Cache) {
-                    Cache[key] = entry;
-                }
-            }
-
+            if (Cache.TryGetValue(key, out var entry)) return entry;
+            entry = await LoadEntryAsyncInner(countryId, decodeWidth).ConfigureAwait(false);
+            Cache.Add(key, entry);
             return entry;
         }
     }
